@@ -23,6 +23,13 @@ def _run(cmd: list[str]) -> dict:
 	}
 
 
+def _get_virtual_env_pip() -> str:
+	"""Get the path to pip in the virtual environment."""
+	from frappe.utils import get_bench_path
+	bench_path = get_bench_path()
+	return os.path.join(bench_path, "env", "bin", "pip")
+
+
 
 def _update_custom_app_status(app_name: str, status: str) -> None:
 	"""Update the status field of matching Frappe Custom App and commit."""
@@ -156,7 +163,7 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 						user=user
 					)
 					
-					install_cmd = ["pip", "install", "-e", app_path]
+					install_cmd = [_get_virtual_env_pip(), "install", "-e", app_path]
 					install_result = _run(install_cmd)
 					
 					if not install_result.get("ok"):
@@ -268,7 +275,7 @@ def _ensure_app_is_installed_as_package(app_name: str) -> bool:
 			return True
 		except ImportError:
 			# App is not installed as a package, install it
-			install_cmd = ["pip", "install", "-e", app_path]
+			install_cmd = [_get_virtual_env_pip(), "install", "-e", app_path]
 			install_result = _run(install_cmd)
 			return install_result.get("ok", False)
 	
@@ -329,7 +336,7 @@ def install_app_package(app_name: str) -> dict:
 		}
 	
 	# Install the app as a Python package
-	install_cmd = ["pip", "install", "-e", app_path]
+	install_cmd = [_get_virtual_env_pip(), "install", "-e", app_path]
 	install_result = _run(install_cmd)
 	
 	if install_result.get("ok"):
