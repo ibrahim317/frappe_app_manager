@@ -134,6 +134,57 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 		result = _run(cmd)
 
 		if result.get("ok"):
+			# Install the app as a Python package
+			paths = _bench_dirs()
+			app_dir_name = _guess_app_dir_name_from_repo(repo_url)
+			app_path = os.path.join(paths["apps_dir"], app_dir_name) if app_dir_name else None
+			
+			if app_path and os.path.isdir(app_path) and app_dir_name:
+				# Check if the app has a setup.py or pyproject.toml
+				setup_py_path = os.path.join(app_path, "setup.py")
+				pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
+				
+				if os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path):
+					# Install the app as a Python package
+					frappe.publish_realtime(
+						"app_manager_progress",
+						{
+							"status": "installing_package",
+							"message": f"Installing {app_name} as Python package...",
+							"app_name": app_name
+						},
+						user=user
+					)
+					
+					install_cmd = ["pip", "install", "-e", app_path]
+					install_result = _run(install_cmd)
+					
+					if not install_result.get("ok"):
+						frappe.log_error(
+							f"Failed to install {app_name} as Python package: {install_result.get('stderr', '')}",
+							"App Manager: pip install failed"
+						)
+						frappe.publish_realtime(
+							"app_manager_progress",
+							{
+								"status": "package_install_failed",
+								"message": f"Failed to install {app_name} as Python package",
+								"app_name": app_name,
+								"error": install_result.get("stderr", "Unknown error")
+							},
+							user=user
+						)
+					else:
+						frappe.publish_realtime(
+							"app_manager_progress",
+							{
+								"status": "package_installed",
+								"message": f"Successfully installed {app_name} as Python package",
+								"app_name": app_name
+							},
+							user=user
+						)
+
 			# Send success notification
 			frappe.publish_realtime(
 				"app_manager_progress",
@@ -148,10 +199,6 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 
 			# Attempt to auto-create/update Frappe Custom App doc
 			try:
-				paths = _bench_dirs()
-				app_dir_name = _guess_app_dir_name_from_repo(repo_url)
-				app_path = os.path.join(paths["apps_dir"], app_dir_name) if app_dir_name else None
-
 				# If the app directory exists, delegate to shared single-app upsert
 				if app_path and os.path.isdir(app_path) and app_dir_name:
 					res = _upsert_custom_app_from_dir(app_dir_name)
@@ -202,6 +249,32 @@ def reload_apps() -> dict:
 	return {"ok": True, **res}
 
 
+def _ensure_app_is_installed_as_package(app_name: str) -> bool:
+	"""Ensure the app is installed as a Python package before attempting site installation."""
+	paths = _bench_dirs()
+	app_path = os.path.join(paths["apps_dir"], app_name)
+	
+	if not os.path.isdir(app_path):
+		return False
+	
+	# Check if the app has a setup.py or pyproject.toml
+	setup_py_path = os.path.join(app_path, "setup.py")
+	pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
+	
+	if os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path):
+		# Try to import the app to check if it's installed
+		try:
+			__import__(app_name)
+			return True
+		except ImportError:
+			# App is not installed as a package, install it
+			install_cmd = ["pip", "install", "-e", app_path]
+			install_result = _run(install_cmd)
+			return install_result.get("ok", False)
+	
+	return True  # App doesn't need package installation
+
+
 @frappe.whitelist()
 def install_app(app_name: str) -> dict:
 	"""Install an already available app onto the current site.
@@ -211,12 +284,95 @@ def install_app(app_name: str) -> dict:
 	if not app_name:
 		raise frappe.ValidationError("app_name is required")
 
+	# Ensure the app is installed as a Python package first
+	if not _ensure_app_is_installed_as_package(app_name):
+		return {
+			"ok": False,
+			"stderr": f"Failed to install {app_name} as Python package. Please check the app structure and try again."
+		}
+
 	site = _current_site()
 	cmd = ["bench", "--site", site, "install-app", app_name]
 	res = _run(cmd)
 	if res.get("ok"):
 		_update_custom_app_status(app_name, "Installed")
 	return res
+
+
+@frappe.whitelist()
+def install_app_package(app_name: str) -> dict:
+	"""Install an app as a Python package (useful for apps downloaded before the fix).
+	
+	This function ensures that an app is properly installed as a Python package
+	so it can be imported by Python during site installation.
+	"""
+	if not app_name:
+		raise frappe.ValidationError("app_name is required")
+	
+	paths = _bench_dirs()
+	app_path = os.path.join(paths["apps_dir"], app_name)
+	
+	if not os.path.isdir(app_path):
+		return {
+			"ok": False,
+			"stderr": f"App directory not found: {app_path}"
+		}
+	
+	# Check if the app has a setup.py or pyproject.toml
+	setup_py_path = os.path.join(app_path, "setup.py")
+	pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
+	
+	if not (os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path)):
+		return {
+			"ok": False,
+			"stderr": f"App {app_name} does not have setup.py or pyproject.toml. Cannot install as Python package."
+		}
+	
+	# Install the app as a Python package
+	install_cmd = ["pip", "install", "-e", app_path]
+	install_result = _run(install_cmd)
+	
+	if install_result.get("ok"):
+		return {
+			"ok": True,
+			"stdout": f"Successfully installed {app_name} as Python package",
+			"message": f"App {app_name} is now available for site installation"
+		}
+	else:
+		return {
+			"ok": False,
+			"stderr": f"Failed to install {app_name} as Python package: {install_result.get('stderr', 'Unknown error')}"
+		}
+
+
+@frappe.whitelist()
+def delete_app_directory(app_name: str) -> dict:
+	"""Delete an app directory from bench (useful for manual cleanup)."""
+	if not app_name:
+		raise frappe.ValidationError("app_name is required")
+	
+	paths = _bench_dirs()
+	app_path = os.path.join(paths["apps_dir"], app_name)
+	
+	if not os.path.isdir(app_path):
+		return {
+			"ok": False,
+			"stderr": f"App directory not found: {app_path}"
+		}
+	
+	# Remove the app directory
+	import shutil
+	try:
+		shutil.rmtree(app_path)
+		return {
+			"ok": True,
+			"stdout": f"Successfully removed {app_name} directory from bench"
+		}
+	except Exception as e:
+		return {
+			"ok": False,
+			"stderr": f"Failed to remove {app_name}: {str(e)}"
+		}
 
 
 @frappe.whitelist()

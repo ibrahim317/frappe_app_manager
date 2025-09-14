@@ -36,6 +36,15 @@ frappe.ui.form.on("Frappe Custom App", {
 					success_indicator: "red",
 				});
 			}, __("Actions"));
+			frm.add_custom_button(__("Install Package"), () => {
+				frm.events._call_api(frm, {
+					title: __("Please wait, while the app package is being installed"),
+					method: "app_manager.api.apps.install_app_package",
+					args: { app_name: frm.doc.app_name },
+					success_indicator: "blue",
+					after: () => frm.reload_doc(),
+				});
+			}, __("Actions"));
 			frm.add_custom_button(__("Install App"), () => {
 				frm.events._call_api(frm, {
 					title: __("Please wait, while the app is being installed"),
