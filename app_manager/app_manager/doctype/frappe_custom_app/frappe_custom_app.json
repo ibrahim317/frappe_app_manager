@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "autoincrement",
+ "creation": "2025-01-27 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "app_info_section",
+  "app_name",
+  "description",
+  "repo_url",
+  "status",
+  "column_break_qmuc",
+  "version",
+  "last_time_updated",
+  "icon",
+  "section_break_rezu",
+  "dependencies"
+ ],
+ "fields": [
+  {
+   "fieldname": "app_info_section",
+   "fieldtype": "Section Break",
+   "label": "App Info"
+  },
+  {
+   "fieldname": "app_name",
+   "fieldtype": "Data",
+   "label": "App Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_preview": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "repo_url",
+   "fieldtype": "Data",
+   "label": "Repo URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_qmuc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Data",
+   "label": "Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_time_updated",
+   "fieldtype": "Datetime",
+   "label": "Last Time Updated",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_rezu",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "dependencies",
+   "fieldtype": "Table",
+   "label": "Dependencies",
+   "options": "Custom App Dependency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "icon",
+   "fieldtype": "Attach Image",
+   "label": "Icon",
+   "read_only": 1
+  },
+  {
+   "default": "Available",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_preview": 1,
+   "label": "Status",
+   "options": "Available\nInstalled",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-09-10 13:02:12.564365",
+ "modified_by": "Administrator",
+ "module": "App Manager",
+ "name": "Frappe Custom App",
+ "naming_rule": "Autoincrement",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "app_name"
+}
