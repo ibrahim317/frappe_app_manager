@@ -23,6 +23,35 @@ def _run(cmd: list[str]) -> dict:
 	}
 
 
+
+def _refresh_apps_txt() -> None:
+    """Re-generate sites/apps.txt from current apps directory.
+
+    This ensures Python can import newly fetched apps in production where
+    auto-reload isn't active.
+    """
+    try:
+        paths = _bench_dirs()
+        apps_dir = paths["apps_dir"]
+        sites_dir = paths["sites_dir"]
+        apps_txt_path = os.path.join(sites_dir, "apps.txt")
+
+        if not os.path.isdir(apps_dir):
+            return
+
+        entries = []
+        for item in os.listdir(apps_dir):
+            item_path = os.path.join(apps_dir, item)
+            if os.path.isdir(item_path) and not item.startswith('.'):
+                entries.append(item)
+
+        entries.sort()
+        with open(apps_txt_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(entries) + "\n")
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "App Manager: failed to refresh sites/apps.txt")
+
+
 def _get_virtual_env_pip() -> str:
 	"""Get the path to pip in the virtual environment."""
 	from frappe.utils import get_bench_path
@@ -141,6 +170,8 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 		result = _run(cmd)
 
 		if result.get("ok"):
+			# Ensure apps list reflects newly fetched app for import path resolution
+			_refresh_apps_txt()
 			# Install the app as a Python package
 			paths = _bench_dirs()
 			app_dir_name = _guess_app_dir_name_from_repo(repo_url)
@@ -300,56 +331,14 @@ def install_app(app_name: str) -> dict:
 
 	site = _current_site()
 	cmd = ["bench", "--site", site, "install-app", app_name]
+	# Refresh apps list so import path includes newly fetched apps
+	_refresh_apps_txt()
 	res = _run(cmd)
 	if res.get("ok"):
 		_update_custom_app_status(app_name, "Installed")
 	return res
 
 
-@frappe.whitelist()
-def install_app_package(app_name: str) -> dict:
-	"""Install an app as a Python package (useful for apps downloaded before the fix).
-	
-	This function ensures that an app is properly installed as a Python package
-	so it can be imported by Python during site installation.
-	"""
-	if not app_name:
-		raise frappe.ValidationError("app_name is required")
-	
-	paths = _bench_dirs()
-	app_path = os.path.join(paths["apps_dir"], app_name)
-	
-	if not os.path.isdir(app_path):
-		return {
-			"ok": False,
-			"stderr": f"App directory not found: {app_path}"
-		}
-	
-	# Check if the app has a setup.py or pyproject.toml
-	setup_py_path = os.path.join(app_path, "setup.py")
-	pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
-	
-	if not (os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path)):
-		return {
-			"ok": False,
-			"stderr": f"App {app_name} does not have setup.py or pyproject.toml. Cannot install as Python package."
-		}
-	
-	# Install the app as a Python package
-	install_cmd = [_get_virtual_env_pip(), "install", "-e", app_path]
-	install_result = _run(install_cmd)
-	
-	if install_result.get("ok"):
-		return {
-			"ok": True,
-			"stdout": f"Successfully installed {app_name} as Python package",
-			"message": f"App {app_name} is now available for site installation"
-		}
-	else:
-		return {
-			"ok": False,
-			"stderr": f"Failed to install {app_name} as Python package: {install_result.get('stderr', 'Unknown error')}"
-		}
 
 
 @frappe.whitelist()
