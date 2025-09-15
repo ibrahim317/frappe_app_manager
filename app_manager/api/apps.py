@@ -45,7 +45,11 @@ def _refresh_apps_txt() -> None:
             if os.path.isdir(item_path) and not item.startswith('.'):
                 entries.append(item)
 
-        entries.sort()
+        # Keep frappe first, then others sorted (safer ordering)
+        entries = sorted(entries)
+        if 'frappe' in entries:
+            entries.remove('frappe')
+            entries.insert(0, 'frappe')
         with open(apps_txt_path, 'w', encoding='utf-8') as f:
             f.write("\n".join(entries) + "\n")
     except Exception:
