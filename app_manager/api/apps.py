@@ -25,8 +25,9 @@ def _run(cmd: list[str]) -> dict:
 
 
 def _refresh_apps_txt() -> None:
-    """Re-generate sites/apps.txt from current apps directory.
+    """Add new apps from apps directory to sites/apps.txt.
 
+    Only adds apps that are not already present in apps.txt to avoid duplicates.
     This ensures Python can import newly fetched apps in production where
     auto-reload isn't active.
     """
@@ -39,15 +40,26 @@ def _refresh_apps_txt() -> None:
         if not os.path.isdir(apps_dir):
             return
 
-        entries = []
+        # Read existing apps from apps.txt
+        existing_apps = set()
+        if os.path.exists(apps_txt_path):
+            with open(apps_txt_path, 'r', encoding='utf-8') as f:
+                existing_apps = {line.strip() for line in f if line.strip()}
+
+        # Find new apps in apps directory
+        new_apps = []
         for item in os.listdir(apps_dir):
             item_path = os.path.join(apps_dir, item)
-            if os.path.isdir(item_path) and not item.startswith('.'):
-                entries.append(item)
+            if (os.path.isdir(item_path) and 
+                not item.startswith('.') and 
+                item not in existing_apps):
+                new_apps.append(item)
 
-        entries.sort()
-        with open(apps_txt_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(entries) + "\n")
+        # Add new apps to apps.txt if any
+        if new_apps:
+            new_apps.sort()
+            with open(apps_txt_path, 'a', encoding='utf-8') as f:
+                f.write("\n".join(new_apps) + "\n")
     except Exception:
         frappe.log_error(frappe.get_traceback(), "App Manager: failed to refresh sites/apps.txt")
 
@@ -194,7 +206,7 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 						user=user
 					)
 					
-					install_cmd = [_get_virtual_env_pip(), "install", "-e", app_path]
+					install_cmd = [_get_virtual_env_pip(), "install", app_path]
 					install_result = _run(install_cmd)
 					
 					if not install_result.get("ok"):
