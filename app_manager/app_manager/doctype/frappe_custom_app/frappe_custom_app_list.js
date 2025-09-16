@@ -21,7 +21,28 @@ get_indicator: function (doc) {
 						fieldname: "repo_url",
 						fieldtype: "Data",
 						reqd: 1,
-						desc: __("e.g. https://github.com/frappe/erpnext or git@github.com:frappe/erpnext.git"),
+						placeholder: __("https://github.com/<github-user>/<repo>"),
+						desc: __("Enter the full repository URL (e.g. https://github.com/frappe/erpnext or git@github.com:frappe/erpnext.git)"),
+					},
+					{
+						label: __("Private Repository"),
+						fieldname: "is_private",
+						fieldtype: "Check",
+						default: 0,
+					},
+					{
+						label: __("Username"),
+						fieldname: "username",
+						fieldtype: "Data",
+						depends_on: "is_private",
+						placeholder: __("GitHub username"),
+					},
+					{
+						label: __("Personal Access Token (PAT)"),
+						fieldname: "pat",
+						fieldtype: "Password",
+						depends_on: "is_private",
+						placeholder: __("GitHub Personal Access Token"),
 					},
 				],
 				primary_action_label: __("Get App"),
@@ -29,10 +50,35 @@ get_indicator: function (doc) {
 					const values = d.get_values();
 					if (!values) return;
 
+					// Validate private repo fields if enabled
+					if (values.is_private) {
+						if (!values.username || !values.pat) {
+							frappe.msgprint({
+								title: __("Validation Error"),
+								message: __("Username and Personal Access Token are required for private repositories."),
+								indicator: "red",
+							});
+							return;
+						}
+					}
+
+					// Construct the final repository URL
+					let final_repo_url = values.repo_url;
+					if (values.is_private && values.username && values.pat) {
+						// Convert https://github.com/user/repo to https://username:PAT@github.com/user/repo
+						if (final_repo_url.startsWith('https://github.com/')) {
+							final_repo_url = final_repo_url.replace('https://github.com/', `https://${values.username}:${values.pat}@github.com/`);
+						} else if (final_repo_url.startsWith('git@github.com:')) {
+							// For SSH URLs, we need to convert to HTTPS format with credentials
+							const repo_path = final_repo_url.replace('git@github.com:', '');
+							final_repo_url = `https://${values.username}:${values.pat}@github.com/${repo_path}`;
+						}
+					}
+
 					// First check if app already exists
 					frappe.call({
 						method: "app_manager.api.apps.check_app_exists",
-						args: { repo_url: values.repo_url },
+						args: { repo_url: final_repo_url },
 						freeze: true,
 						freeze_message: __("Checking if app exists..."),
 					}).then((r) => {
@@ -58,7 +104,7 @@ get_indicator: function (doc) {
 									// Call get_app with overwrite flag (now runs in background)
 									frappe.call({
 										method: "app_manager.api.apps.get_app",
-										args: { repo_url: values.repo_url, overwrite: true },
+										args: { repo_url: final_repo_url, overwrite: true },
 										freeze: false, // No freeze since it's a background job
 									}).then((r) => {
 										const msg = r?.message || {};
@@ -85,7 +131,7 @@ get_indicator: function (doc) {
 							// App doesn't exist, proceed with normal get_app (now runs in background)
 							frappe.call({
 								method: "app_manager.api.apps.get_app",
-								args: { repo_url: values.repo_url },
+								args: { repo_url: final_repo_url },
 								freeze: false, // No freeze since it's a background job
 							}).then((r) => {
 								const msg = r?.message || {};
