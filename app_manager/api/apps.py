@@ -195,45 +195,65 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 				pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
 				
 				if os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path):
-					# Install the app as a Python package
-					frappe.publish_realtime(
-						"app_manager_progress",
-						{
-							"status": "installing_package",
-							"message": f"Installing {app_name} as Python package...",
-							"app_name": app_name
-						},
-						user=user
-					)
+					# Check if app needs to be installed as a proper package
+					needs_install = True
+					try:
+						import pkg_resources
+						dist = pkg_resources.get_distribution(app_dir_name)
+						# Check if it's properly installed (not in development mode)
+						# The correct way is to check if there's a .pth file
+						import site
+						site_packages = site.getsitepackages()[0]
+						pth_file = os.path.join(site_packages, f"{app_dir_name}.pth")
+						
+						if os.path.exists(pth_file):
+							needs_install = True
+						else:
+							needs_install = False
+					except (pkg_resources.DistributionNotFound, ImportError):
+						pass
 					
-					install_cmd = [_get_virtual_env_pip(), "install", app_path]
-					install_result = _run(install_cmd)
 					
-					if not install_result.get("ok"):
-						frappe.log_error(
-							f"Failed to install {app_name} as Python package: {install_result.get('stderr', '')}",
-							"App Manager: pip install failed"
-						)
+					if needs_install:
+						# Install the app as a Python package
 						frappe.publish_realtime(
 							"app_manager_progress",
 							{
-								"status": "package_install_failed",
-								"message": f"Failed to install {app_name} as Python package",
-								"app_name": app_name,
-								"error": install_result.get("stderr", "Unknown error")
-							},
-							user=user
-						)
-					else:
-						frappe.publish_realtime(
-							"app_manager_progress",
-							{
-								"status": "package_installed",
-								"message": f"Successfully installed {app_name} as Python package",
+								"status": "installing_package",
+								"message": f"Installing {app_name} as Python package...",
 								"app_name": app_name
 							},
 							user=user
 						)
+						
+						install_cmd = [_get_virtual_env_pip(), "install", "--force-reinstall", app_path]
+						install_result = _run(install_cmd)
+						
+						if not install_result.get("ok"):
+							frappe.log_error(
+								f"Failed to install {app_name} as Python package: {install_result.get('stderr', '')}",
+								"App Manager: pip install failed"
+							)
+							frappe.publish_realtime(
+								"app_manager_progress",
+								{
+									"status": "package_install_failed",
+									"message": f"Failed to install {app_name} as Python package",
+									"app_name": app_name,
+									"error": install_result.get("stderr", "Unknown error")
+								},
+								user=user
+							)
+						else:
+							frappe.publish_realtime(
+								"app_manager_progress",
+								{
+									"status": "package_installed",
+									"message": f"Successfully installed {app_name} as Python package",
+									"app_name": app_name
+								},
+								user=user
+							)
 
 			# Send success notification
 			frappe.publish_realtime(
@@ -265,6 +285,78 @@ def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str
 			except Exception as e:
 				frappe.log_error(frappe.get_traceback(), "App Manager: get_app doc creation failed")
 		else:
+			# Even if bench get-app failed, the app might still be installed
+			# Let's check if we can still proceed with package installation
+			paths = _bench_dirs()
+			app_dir_name = _guess_app_dir_name_from_repo(repo_url)
+			app_path = os.path.join(paths["apps_dir"], app_dir_name) if app_dir_name else None
+			
+			if app_path and os.path.isdir(app_path) and app_dir_name:
+				# Proceed with package installation even if bench get-app had issues
+				setup_py_path = os.path.join(app_path, "setup.py")
+				pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
+				
+				if os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path):
+					# Check if app needs to be installed as a proper package
+					needs_install = True
+					try:
+						import pkg_resources
+						dist = pkg_resources.get_distribution(app_dir_name)
+						# Check if it's properly installed (not in development mode)
+						# The correct way is to check if there's a .pth file
+						import site
+						site_packages = site.getsitepackages()[0]
+						pth_file = os.path.join(site_packages, f"{app_dir_name}.pth")
+						
+						if os.path.exists(pth_file):
+							needs_install = True
+						else:
+							needs_install = False
+					except (pkg_resources.DistributionNotFound, ImportError):
+						pass
+					
+					
+					if needs_install:
+						# Install the app as a Python package
+						frappe.publish_realtime(
+							"app_manager_progress",
+							{
+								"status": "installing_package",
+								"message": f"Installing {app_name} as Python package...",
+								"app_name": app_name
+							},
+							user=user
+						)
+						
+						install_cmd = [_get_virtual_env_pip(), "install", "--force-reinstall", app_path]
+						install_result = _run(install_cmd)
+						
+						if not install_result.get("ok"):
+							frappe.log_error(
+								f"Failed to install {app_name} as Python package: {install_result.get('stderr', '')}",
+								"App Manager: pip install failed"
+							)
+							frappe.publish_realtime(
+								"app_manager_progress",
+								{
+									"status": "package_install_failed",
+									"message": f"Failed to install {app_name} as Python package",
+									"app_name": app_name,
+									"error": install_result.get("stderr", "Unknown error")
+								},
+								user=user
+							)
+						else:
+							frappe.publish_realtime(
+								"app_manager_progress",
+								{
+									"status": "package_installed",
+									"message": f"Successfully installed {app_name} as Python package",
+									"app_name": app_name
+								},
+								user=user
+							)
+			
 			# Send error notification
 			frappe.publish_realtime(
 				"app_manager_progress",
@@ -312,15 +404,23 @@ def _ensure_app_is_installed_as_package(app_name: str) -> bool:
 	pyproject_toml_path = os.path.join(app_path, "pyproject.toml")
 	
 	if os.path.exists(setup_py_path) or os.path.exists(pyproject_toml_path):
-		# Try to import the app to check if it's installed
+		# Check if app is installed as a proper package (not development mode)
 		try:
-			__import__(app_name)
-			return True
-		except ImportError:
-			# App is not installed as a package, install it
-			install_cmd = [_get_virtual_env_pip(), "install", app_path]
-			install_result = _run(install_cmd)
-			return install_result.get("ok", False)
+			import pkg_resources
+			dist = pkg_resources.get_distribution(app_name)
+			# Check if it's properly installed (not in development mode)
+			if dist and dist.location:
+				# If location points to the actual app directory, it's in development mode (.pth file)
+				# If location points to site-packages, it's properly installed
+				if not dist.location.endswith(app_path):
+					return True
+		except (pkg_resources.DistributionNotFound, ImportError):
+			pass
+		
+		# App is not installed as a proper package, install it
+		install_cmd = [_get_virtual_env_pip(), "install", "--force-reinstall", app_path]
+		install_result = _run(install_cmd)
+		return install_result.get("ok", False)
 	
 	return True  # App doesn't need package installation
 
