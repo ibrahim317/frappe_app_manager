@@ -158,32 +158,11 @@ def guess_app_dir_name_from_repo(repo_url: str) -> Optional[str]:
 	return name or None
 
 
-def get_app_version_from_init(app_path: str, app_name: str) -> str:
-	"""Get the version from the app's __init__.py file."""
-	init_path = os.path.join(app_path, app_name, '__init__.py')
-	if not os.path.exists(init_path):
-		return '0.0.1'
-	
-	try:
-		with open(init_path, 'r') as f:
-			content = f.read()
-			# Look for __version__ = "version" pattern
-			import re
-			match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
-			if match:
-				return match.group(1)
-	except Exception:
-		pass
-	
-	return '0.0.1'
-
-
 def upsert_custom_app_from_dir(app_name: str) -> Dict[str, Any]:
 	"""Upsert a single `Frappe Custom App` document based on an app in bench.
 
 	- Reads metadata from `<apps>/<app_name>/<app_name>/hooks.py`
-	- Determines version from `<apps>/<app_name>/<app_name>/__init__.py` (__version__)
-	- Falls back to site or global `apps.json` if version not found in __init__.py
+	- Determines version from site or global `apps.json`
 	- Determines status based on installation for current site
 	- Respects `force`: if False and doc exists, it will skip
 
@@ -205,17 +184,13 @@ def upsert_custom_app_from_dir(app_name: str) -> Dict[str, Any]:
 		return {"action": "skipped", "reason": "no_hooks", "app_name": app_name}
 
 	# Version and repo
-	# First try to get version from __init__.py
-	version = get_app_version_from_init(app_path, app_name)
+	version = '0.0.1'
 	repo_url = get_git_remote_url(app_path) or ''
-	
-	# Fallback to apps.json if needed (for backward compatibility)
 	site_apps_json_path = os.path.join(sites_dir, site_name, 'apps.json')
 	global_apps_json_path = os.path.join(sites_dir, 'apps.json')
 	apps_json = load_apps_json(site_apps_json_path) or load_apps_json(global_apps_json_path)
 	resolved_app_name = info.get('app_name', app_name)
-	if resolved_app_name in apps_json and version == '0.0.1':
-		# Only use apps.json version if we couldn't find version in __init__.py
+	if resolved_app_name in apps_json:
 		version = apps_json[resolved_app_name].get('version', version)
 
 	# Installed status
