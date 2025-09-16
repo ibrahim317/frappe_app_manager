@@ -318,7 +318,7 @@ def _ensure_app_is_installed_as_package(app_name: str) -> bool:
 			return True
 		except ImportError:
 			# App is not installed as a package, install it
-			install_cmd = [_get_virtual_env_pip(), "install", "-e", app_path]
+			install_cmd = [_get_virtual_env_pip(), "install", app_path]
 			install_result = _run(install_cmd)
 			return install_result.get("ok", False)
 	

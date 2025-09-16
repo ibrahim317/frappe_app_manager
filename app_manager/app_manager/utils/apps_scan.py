@@ -24,13 +24,49 @@ def _bench_paths() -> Dict[str, str]:
 	}
 
 
+def _load_apps_from_apps_txt(sites_dir: str) -> Optional[List[str]]:
+	"""Load allowlisted app names from bench-level sites/apps.txt if present.
+
+	Returns None if file doesn't exist (meaning no restriction should be applied).
+	"""
+	apps_txt_path = os.path.join(sites_dir, 'apps.txt')
+	if not os.path.exists(apps_txt_path):
+		return None
+	try:
+		with open(apps_txt_path, 'r', encoding='utf-8') as handle:
+			allowed: List[str] = []
+			for line in handle.readlines():
+				line = line.strip()
+				if not line or line.startswith('#'):
+					continue
+				allowed.append(line)
+			return allowed
+	except Exception:
+		# On any parsing error, behave as if no restriction
+		return None
+
+
 def get_apps_from_directory(apps_dir: str) -> List[str]:
+	"""Return app directories filtered by sites/apps.txt if present.
+
+	- If sites/apps.txt exists, only include directories listed there
+	- Otherwise, include all directories under apps_dir (current behavior)
+	"""
 	apps: List[str] = []
-	if os.path.exists(apps_dir):
-		for item in os.listdir(apps_dir):
-			item_path = os.path.join(apps_dir, item)
-			if os.path.isdir(item_path) and not item.startswith('.'):
-				apps.append(item)
+	if not os.path.exists(apps_dir):
+		return apps
+
+	paths = _bench_paths()
+	allowed_apps = _load_apps_from_apps_txt(paths["sites_dir"])  # None means no restriction
+
+	for item in os.listdir(apps_dir):
+		item_path = os.path.join(apps_dir, item)
+		if not os.path.isdir(item_path) or item.startswith('.'):
+			continue
+		if allowed_apps is not None and item not in allowed_apps:
+			continue
+		apps.append(item)
+
 	return apps
 
 
