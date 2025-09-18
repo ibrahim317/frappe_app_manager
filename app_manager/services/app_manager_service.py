@@ -128,7 +128,7 @@ class FrappeAppManager(AppManagerInterface):
 
         # Start background job
         job = frappe.enqueue(
-            "app_manager.api.apps._get_app_background",
+            "app_manager.services.app_manager_service._get_app_background",
             queue="long",
             timeout=3600,  # 1 hour timeout
             repo_url=authenticated_repo_url,
@@ -196,11 +196,8 @@ class FrappeAppManager(AppManagerInterface):
         return result
 
 
-def _fetch_app_background(repo_url: str, overwrite: bool, app_name: str, user: str):
+def _get_app_background(repo_url: str, overwrite: bool, app_name: str, user: str):
     """Background job to fetch app and send websocket updates."""
-    # This function will be refactored to use the service classes
-    # For now, keeping the original implementation to maintain functionality
-    import frappe
     from frappe.utils import execute_in_shell
     
     def _run(cmd):
@@ -210,6 +207,12 @@ def _fetch_app_background(repo_url: str, overwrite: bool, app_name: str, user: s
             "stdout": (out or b"").decode(errors="replace"),
             "stderr": (err or b"").decode(errors="replace"),
         }
+    
+    def _get_virtual_env_pip():
+        """Get the path to pip in the virtual environment."""
+        from frappe.utils import get_bench_path
+        bench_path = get_bench_path()
+        return os.path.join(bench_path, "env", "bin", "pip")
     
     try:
         # Send start notification
@@ -232,33 +235,9 @@ def _fetch_app_background(repo_url: str, overwrite: bool, app_name: str, user: s
 
         if result.get("ok"):
             # Ensure apps list reflects newly fetched app for import path resolution
-            from app_manager.app_manager.utils.apps_scan import bench_paths as _bench_dirs
-            paths = _bench_dirs()
-            apps_dir = paths["apps_dir"]
-            sites_dir = paths["sites_dir"]
-            apps_txt_path = os.path.join(sites_dir, "apps.txt")
-
-            if os.path.isdir(apps_dir):
-                # Read existing apps from apps.txt
-                existing_apps = set()
-                if os.path.exists(apps_txt_path):
-                    with open(apps_txt_path, 'r', encoding='utf-8') as f:
-                        existing_apps = {line.strip() for line in f if line.strip()}
-
-                # Find new apps in apps directory
-                new_apps = []
-                for item in os.listdir(apps_dir):
-                    item_path = os.path.join(apps_dir, item)
-                    if (os.path.isdir(item_path) and 
-                        not item.startswith('.') and 
-                        item not in existing_apps):
-                        new_apps.append(item)
-
-                # Add new apps to apps.txt if any
-                if new_apps:
-                    new_apps.sort()
-                    with open(apps_txt_path, 'a', encoding='utf-8') as f:
-                        f.write("\n".join(new_apps) + "\n")
+            from app_manager.services.service_container import get_service_container
+            services = get_service_container()
+            services.get_app_repository().refresh_apps_list()
             
             # Install the app as a Python package
             paths = _bench_dirs()
@@ -282,10 +261,7 @@ def _fetch_app_background(repo_url: str, overwrite: bool, app_name: str, user: s
                         user=user
                     )
                     
-                    from frappe.utils import get_bench_path
-                    bench_path = get_bench_path()
-                    pip_path = os.path.join(bench_path, "env", "bin", "pip")
-                    install_cmd = [pip_path, "install", "--force-reinstall", app_path, "--no-cache-dir"]
+                    install_cmd = [_get_virtual_env_pip(), "install", "--force-reinstall", app_path, "--no-cache-dir"]
                     install_result = _run(install_cmd)
                     
                     if not install_result.get("ok"):
@@ -346,7 +322,6 @@ def _fetch_app_background(repo_url: str, overwrite: bool, app_name: str, user: s
         else:
             # Even if bench get-app failed, the app might still be installed
             # Let's check if we can still proceed with package installation
-            from app_manager.app_manager.utils.apps_scan import bench_paths as _bench_dirs
             paths = _bench_dirs()
             app_dir_name = _guess_app_dir_name_from_repo(repo_url)
             app_path = os.path.join(paths["apps_dir"], app_dir_name) if app_dir_name else None
@@ -369,10 +344,7 @@ def _fetch_app_background(repo_url: str, overwrite: bool, app_name: str, user: s
                         user=user
                     )
                     
-                    from frappe.utils import get_bench_path
-                    bench_path = get_bench_path()
-                    pip_path = os.path.join(bench_path, "env", "bin", "pip")
-                    install_cmd = [pip_path, "install", "--force-reinstall", app_path, "--no-cache-dir"]
+                    install_cmd = [_get_virtual_env_pip(), "install", "--force-reinstall", app_path, "--no-cache-dir"]
                     install_result = _run(install_cmd)
                     
                     if not install_result.get("ok"):

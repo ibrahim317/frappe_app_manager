@@ -7,12 +7,11 @@ import frappe
 from frappe.utils import cstr
 
 from app_manager.app_manager.utils.apps_scan import (
-    scan_and_sync_custom_apps,
-    guess_app_dir_name_from_repo as _guess_app_dir_name_from_repo
+    scan_and_sync_custom_apps
 )
 from app_manager.services.service_container import get_service_container
 from app_manager.services.exceptions import (
-    AppManagerException, AppNotFoundError, InvalidRepositoryURLError
+    AppManagerException
 )
 
 
@@ -177,3 +176,5 @@ def remove_app(app_name: str) -> dict:
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "App Manager: remove_app unexpected error")
 		return {"ok": False, "error": "Unexpected error occurred"}
+
+
