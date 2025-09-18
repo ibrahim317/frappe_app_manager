@@ -87,10 +87,38 @@ def get_git_remote_url(app_path: str) -> Optional[str]:
 				text=True,
 				check=True
 			)
-			return result.stdout.strip()
+			url = result.stdout.strip()
+			# Clean the URL by removing credentials to avoid database field length issues
+			return _clean_repo_url(url)
 		except subprocess.CalledProcessError:
 			continue
 	return None
+
+
+def _clean_repo_url(url: str) -> str:
+	"""Remove credentials from repository URL to store clean URL in database."""
+	if not url:
+		return url
+	
+	# Handle HTTPS URLs with embedded credentials: https://user:pass@github.com/user/repo
+	if '@' in url and '://' in url:
+		# Split on :// to get protocol and rest
+		parts = url.split('://', 1)
+		if len(parts) == 2:
+			protocol, rest = parts
+			# If there's an @ in the rest, remove everything before the last @
+			if '@' in rest:
+				# Find the last @ and take everything after it
+				at_index = rest.rfind('@')
+				clean_rest = rest[at_index + 1:]
+				return f"{protocol}://{clean_rest}"
+	
+	# Handle SSH URLs: git@github.com:user/repo -> https://github.com/user/repo
+	if url.startswith('git@github.com:'):
+		repo_path = url.replace('git@github.com:', '')
+		return f'https://github.com/{repo_path}'
+	
+	return url
 
 
 def parse_hooks_file(hooks_path: str) -> Dict[str, Any]:

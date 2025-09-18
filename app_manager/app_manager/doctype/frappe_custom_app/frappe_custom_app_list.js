@@ -62,23 +62,18 @@ get_indicator: function (doc) {
 						}
 					}
 
-					// Construct the final repository URL
-					let final_repo_url = values.repo_url;
-					if (values.is_private && values.username && values.pat) {
-						// Convert https://github.com/user/repo to https://username:PAT@github.com/user/repo
-						if (final_repo_url.startsWith('https://github.com/')) {
-							final_repo_url = final_repo_url.replace('https://github.com/', `https://${values.username}:${values.pat}@github.com/`);
-						} else if (final_repo_url.startsWith('git@github.com:')) {
-							// For SSH URLs, we need to convert to HTTPS format with credentials
-							const repo_path = final_repo_url.replace('git@github.com:', '');
-							final_repo_url = `https://${values.username}:${values.pat}@github.com/${repo_path}`;
-						}
-					}
+					// Prepare arguments for API calls
+					const api_args = { 
+						repo_url: values.repo_url,
+						is_private: values.is_private || false,
+						username: values.username || '',
+						pat: values.pat || ''
+					};
 
 					// First check if app already exists
 					frappe.call({
 						method: "app_manager.api.apps.check_app_exists",
-						args: { repo_url: final_repo_url },
+						args: api_args,
 						freeze: true,
 						freeze_message: __("Checking if app exists..."),
 					}).then((r) => {
@@ -104,7 +99,7 @@ get_indicator: function (doc) {
 									// Call get_app with overwrite flag (now runs in background)
 									frappe.call({
 										method: "app_manager.api.apps.get_app",
-										args: { repo_url: final_repo_url, overwrite: true },
+										args: { ...api_args, overwrite: true },
 										freeze: false, // No freeze since it's a background job
 									}).then((r) => {
 										const msg = r?.message || {};
@@ -131,7 +126,7 @@ get_indicator: function (doc) {
 							// App doesn't exist, proceed with normal get_app (now runs in background)
 							frappe.call({
 								method: "app_manager.api.apps.get_app",
-								args: { repo_url: final_repo_url },
+								args: api_args,
 								freeze: false, // No freeze since it's a background job
 							}).then((r) => {
 								const msg = r?.message || {};
